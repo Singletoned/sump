@@ -18,7 +18,10 @@ For Sump development itself:
 make setup
 make check
 make build
+make smoke
 ```
+
+`make smoke` first runs the checks and build, then installs the wheel into a clean temporary Python 3.10 environment. It captures a real exception with socket connections prohibited and verifies claim, identical redelivery, acknowledgement, retained records, and the final empty result through the installed command.
 
 ## Application setup
 
