@@ -333,7 +333,16 @@ def acknowledge_claim(project: str, claim_id: str) -> dict[str, Any]:
     validate_project(project)
     _validate_claim_id(claim_id)
     registry = ProjectRegistry.from_environment(project)
-    current_time = _now()
+    with registry.claim_lock():
+        return _acknowledge_claim_locked(registry, project, claim_id, _now())
+
+
+def _acknowledge_claim_locked(
+    registry: ProjectRegistry,
+    project: str,
+    claim_id: str,
+    current_time: datetime,
+) -> dict[str, Any]:
     _recover_staged_claims(registry)
     _expire_active_claim(registry, project, current_time)
     active_path = registry.paths.claimed / claim_id
@@ -377,7 +386,15 @@ def claim_project(project: str) -> dict[str, Any]:
     """Return an active claim or claim up to the oldest 100 pending occurrences."""
     validate_project(project)
     registry = ProjectRegistry.from_environment(project)
-    current_time = _now()
+    with registry.claim_lock():
+        return _claim_project_locked(registry, project, _now())
+
+
+def _claim_project_locked(
+    registry: ProjectRegistry,
+    project: str,
+    current_time: datetime,
+) -> dict[str, Any]:
     _recover_staged_claims(registry)
     _expire_active_claim(registry, project, current_time)
     active_claim = _read_active_claim(registry, project)
