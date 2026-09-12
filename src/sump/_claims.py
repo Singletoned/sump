@@ -13,6 +13,7 @@ from sentry_sdk.envelope import Envelope
 from sump._registry import (
     FILE_MODE,
     ProjectRegistry,
+    RegistryCorruptionError,
     _ensure_private_directory,
     _fsync_directory,
 )
@@ -108,6 +109,20 @@ def _claim_response(
     }
 
 
+def _load_claim_metadata(metadata_path: Path) -> dict[str, Any]:
+    try:
+        serialized_metadata = metadata_path.read_text(encoding="utf-8")
+    except FileNotFoundError as error:
+        raise RegistryCorruptionError(f"claim metadata is missing: {metadata_path}") from error
+    try:
+        metadata = json.loads(serialized_metadata)
+    except json.JSONDecodeError as error:
+        raise RegistryCorruptionError(f"claim metadata is malformed: {metadata_path}") from error
+    if not isinstance(metadata, dict):
+        raise RegistryCorruptionError(f"claim metadata is not a JSON object: {metadata_path}")
+    return metadata
+
+
 def _read_active_claim(registry: ProjectRegistry, project: str) -> dict[str, Any] | None:
     claimed_directory = registry.paths.claimed
     if not claimed_directory.exists():
@@ -115,33 +130,41 @@ def _read_active_claim(registry: ProjectRegistry, project: str) -> dict[str, Any
 
     claim_directories = sorted(claimed_directory.iterdir())
     if any(not path.is_dir() for path in claim_directories):
-        raise ValueError(f"unexpected entry in active claims directory: {claimed_directory}")
+        raise RegistryCorruptionError(
+            f"unexpected entry in active claims directory: {claimed_directory}"
+        )
     if len(claim_directories) > 1:
-        raise ValueError(f"project {project!r} has multiple active claims")
+        raise RegistryCorruptionError(f"project {project!r} has multiple active claims")
     if not claim_directories:
         return None
 
     claim_directory = claim_directories[0]
     metadata_path = claim_directory / CLAIM_METADATA_FILENAME
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = _load_claim_metadata(metadata_path)
     if metadata.get("schema_version") != SCHEMA_VERSION:
-        raise ValueError(f"unsupported claim metadata schema: {metadata_path}")
+        raise RegistryCorruptionError(f"unsupported claim metadata schema: {metadata_path}")
     if metadata.get("project") != project:
-        raise ValueError(f"active claim project does not match {project!r}: {metadata_path}")
+        raise RegistryCorruptionError(
+            f"active claim project does not match {project!r}: {metadata_path}"
+        )
     if metadata.get("claim_id") != claim_directory.name:
-        raise ValueError(f"active claim ID does not match its directory: {metadata_path}")
+        raise RegistryCorruptionError(
+            f"active claim ID does not match its directory: {metadata_path}"
+        )
 
     occurrence_filenames = metadata.get("occurrence_filenames")
     if not isinstance(occurrence_filenames, list) or not all(
         isinstance(filename, str) for filename in occurrence_filenames
     ):
-        raise ValueError(f"invalid occurrence filename list: {metadata_path}")
+        raise RegistryCorruptionError(f"invalid occurrence filename list: {metadata_path}")
 
     stored_filenames = sorted(
         path.name for path in claim_directory.iterdir() if path.name != CLAIM_METADATA_FILENAME
     )
     if sorted(occurrence_filenames) != stored_filenames:
-        raise ValueError(f"active claim contents do not match metadata: {claim_directory}")
+        raise RegistryCorruptionError(
+            f"active claim contents do not match metadata: {claim_directory}"
+        )
 
     occurrences = [_read_occurrence(claim_directory / name) for name in occurrence_filenames]
     return _claim_response(project, metadata, occurrences)
@@ -154,6 +177,66 @@ def _validate_claim_id(claim_id: str) -> None:
         raise ValueError("claim ID must be a 32-character lowercase UUID") from error
     if parsed_claim_id.hex != claim_id:
         raise ValueError("claim ID must be a 32-character lowercase UUID")
+
+
+def _recover_staged_claims(registry: ProjectRegistry) -> None:
+    staging_directory = registry.paths.staging
+    if not staging_directory.exists():
+        return
+
+    staged_claims = sorted(staging_directory.iterdir())
+    staged_envelopes: list[tuple[Path, Path]] = []
+    metadata_paths: list[Path] = []
+    destination_names = (
+        {path.name for path in registry.paths.pending.iterdir()}
+        if registry.paths.pending.exists()
+        else set()
+    )
+
+    for staged_claim in staged_claims:
+        if not staged_claim.is_dir():
+            raise RegistryCorruptionError(f"unexpected staging entry: {staged_claim}")
+        try:
+            _validate_claim_id(staged_claim.name)
+        except ValueError as error:
+            raise RegistryCorruptionError(f"invalid staged claim ID: {staged_claim}") from error
+
+        for staged_path in staged_claim.iterdir():
+            if staged_path.name == CLAIM_METADATA_FILENAME:
+                if not staged_path.is_file():
+                    raise RegistryCorruptionError(
+                        f"staged claim metadata is not a file: {staged_path}"
+                    )
+                metadata_paths.append(staged_path)
+                continue
+            if not staged_path.is_file():
+                raise RegistryCorruptionError(f"unexpected staged claim entry: {staged_path}")
+            try:
+                _parse_occurrence_filename(staged_path)
+            except ValueError as error:
+                raise RegistryCorruptionError(
+                    f"invalid staged occurrence: {staged_path}"
+                ) from error
+            if staged_path.name in destination_names:
+                raise RegistryCorruptionError(
+                    f"staged occurrence conflicts with pending: {staged_path.name}"
+                )
+            destination_names.add(staged_path.name)
+            staged_envelopes.append((staged_path, registry.paths.pending / staged_path.name))
+
+    if not staged_claims:
+        return
+
+    _ensure_private_directory(registry.paths.pending)
+    for staged_path, pending_path in staged_envelopes:
+        os.replace(staged_path, pending_path)
+    for metadata_path in metadata_paths:
+        metadata_path.unlink()
+    for staged_claim in staged_claims:
+        staged_claim.rmdir()
+
+    _fsync_directory(registry.paths.pending)
+    _fsync_directory(staging_directory)
 
 
 def _acknowledgement_response(project: str, claim_id: str) -> dict[str, Any]:
@@ -170,19 +253,22 @@ def acknowledge_claim(project: str, claim_id: str) -> dict[str, Any]:
     validate_project(project)
     _validate_claim_id(claim_id)
     registry = ProjectRegistry.from_environment(project)
+    _recover_staged_claims(registry)
     active_path = registry.paths.claimed / claim_id
     acknowledged_path = registry.paths.acknowledged / claim_id
 
     if active_path.exists() and acknowledged_path.exists():
-        raise ValueError(f"claim {claim_id!r} is both active and acknowledged")
+        raise RegistryCorruptionError(f"claim {claim_id!r} is both active and acknowledged")
     if acknowledged_path.exists():
         if not acknowledged_path.is_dir():
-            raise ValueError(f"acknowledged claim is not a directory: {acknowledged_path}")
-        metadata = json.loads(
-            (acknowledged_path / CLAIM_METADATA_FILENAME).read_text(encoding="utf-8")
-        )
+            raise RegistryCorruptionError(
+                f"acknowledged claim is not a directory: {acknowledged_path}"
+            )
+        metadata = _load_claim_metadata(acknowledged_path / CLAIM_METADATA_FILENAME)
         if metadata.get("project") != project or metadata.get("claim_id") != claim_id:
-            raise ValueError(f"acknowledged claim metadata does not match: {acknowledged_path}")
+            raise RegistryCorruptionError(
+                f"acknowledged claim metadata does not match: {acknowledged_path}"
+            )
         return _acknowledgement_response(project, claim_id)
 
     active_claim = _read_active_claim(registry, project)
@@ -200,6 +286,7 @@ def claim_project(project: str) -> dict[str, Any]:
     """Return an active claim or claim up to the oldest 100 pending occurrences."""
     validate_project(project)
     registry = ProjectRegistry.from_environment(project)
+    _recover_staged_claims(registry)
     active_claim = _read_active_claim(registry, project)
     if active_claim is not None:
         return active_claim
@@ -215,9 +302,10 @@ def claim_project(project: str) -> dict[str, Any]:
     occurrences = [_read_occurrence(path) for path in pending_paths]
     claimed_at = datetime.now(timezone.utc)
     claim_id = uuid.uuid4().hex
-    claim_directory = registry.paths.claimed / claim_id
+    staging_claim = registry.paths.staging / claim_id
+    active_claim_path = registry.paths.claimed / claim_id
 
-    for directory in (registry.paths.claimed, claim_directory):
+    for directory in (registry.paths.staging, registry.paths.claimed, staging_claim):
         _ensure_private_directory(directory)
 
     metadata = {
@@ -228,13 +316,15 @@ def claim_project(project: str) -> dict[str, Any]:
         "expires_at": _format_timestamp(claimed_at + CLAIM_DURATION),
         "occurrence_filenames": [path.name for path in pending_paths],
     }
-    _write_claim_metadata(claim_directory / CLAIM_METADATA_FILENAME, metadata)
+    _write_claim_metadata(staging_claim / CLAIM_METADATA_FILENAME, metadata)
 
     for pending_path in pending_paths:
-        os.replace(pending_path, claim_directory / pending_path.name)
+        os.replace(pending_path, staging_claim / pending_path.name)
 
     _fsync_directory(pending_directory)
-    _fsync_directory(claim_directory)
+    _fsync_directory(staging_claim)
+    os.replace(staging_claim, active_claim_path)
+    _fsync_directory(registry.paths.staging)
     _fsync_directory(registry.paths.claimed)
 
     return _claim_response(project, metadata, occurrences)

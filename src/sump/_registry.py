@@ -14,6 +14,10 @@ DIRECTORY_MODE = 0o700
 FILE_MODE = 0o600
 
 
+class RegistryCorruptionError(ValueError):
+    """The on-disk registry violates Sump's state invariants."""
+
+
 @dataclass(frozen=True)
 class ProjectPaths:
     """Filesystem locations used by one project registry."""
@@ -23,6 +27,7 @@ class ProjectPaths:
     projects: Path
     project: Path
     pending: Path
+    staging: Path
     claimed: Path
     acknowledged: Path
 
@@ -51,6 +56,7 @@ def project_paths(root: Path, project: str) -> ProjectPaths:
         projects=projects_directory,
         project=project_directory,
         pending=project_directory / "pending",
+        staging=project_directory / "staging",
         claimed=project_directory / "claimed",
         acknowledged=project_directory / "acknowledged",
     )

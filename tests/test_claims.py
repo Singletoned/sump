@@ -18,7 +18,7 @@ from unittest.mock import patch
 from sentry_sdk.envelope import Envelope, Item
 
 from sump._claims import CLAIM_METADATA_FILENAME, claim_project
-from sump._registry import ProjectRegistry
+from sump._registry import ProjectRegistry, RegistryCorruptionError
 from sump.cli import main
 
 
@@ -175,8 +175,89 @@ class ClaimTests(unittest.TestCase):
         source = claimed_directory / claim["claim_id"]
         shutil.copytree(source, claimed_directory / "second-active-claim")
 
-        with self.assertRaisesRegex(ValueError, "multiple active claims"):
+        with self.assertRaisesRegex(RegistryCorruptionError, "multiple active claims"):
             claim_project("example-app")
+
+    def test_inconsistent_active_claim_metadata_is_registry_corruption(self) -> None:
+        self.store_occurrence(
+            "example-app",
+            "claimed event",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            occurrence_number=1,
+        )
+        claim = claim_project("example-app")
+        metadata_path = (
+            self.state_root
+            / "projects"
+            / "example-app"
+            / "claimed"
+            / claim["claim_id"]
+            / CLAIM_METADATA_FILENAME
+        )
+        metadata = json.loads(metadata_path.read_text())
+        metadata["project"] = "wrong-project"
+        metadata_path.write_text(json.dumps(metadata))
+
+        with self.assertRaisesRegex(RegistryCorruptionError, "does not match"):
+            claim_project("example-app")
+
+    def assert_interrupted_claim_recovers(self, fail_after_moves: int) -> None:
+        occurrence_count = 3
+        with tempfile.TemporaryDirectory() as directory:
+            state_root = Path(directory) / "state"
+            with patch.dict(os.environ, {"SUMP_STATE_DIR": str(state_root)}):
+                first_capture = datetime(2026, 1, 1, tzinfo=timezone.utc)
+                for sequence in range(occurrence_count):
+                    self.store_occurrence(
+                        "example-app",
+                        f"event-{sequence}",
+                        first_capture + timedelta(seconds=sequence),
+                        occurrence_number=sequence,
+                    )
+
+                pending_directory = state_root / "projects" / "example-app" / "pending"
+                staging_directory = state_root / "projects" / "example-app" / "staging"
+                claimed_directory = state_root / "projects" / "example-app" / "claimed"
+                real_replace = os.replace
+                moved_count = 0
+
+                def interrupt_replace(
+                    source: str | os.PathLike[str],
+                    destination: str | os.PathLike[str],
+                ) -> None:
+                    nonlocal moved_count
+                    source_path = Path(source)
+                    if source_path.parent == pending_directory:
+                        if moved_count == fail_after_moves:
+                            raise OSError("simulated claim interruption")
+                        real_replace(source, destination)
+                        moved_count += 1
+                        return
+                    if source_path.parent == staging_directory and moved_count == fail_after_moves:
+                        raise OSError("simulated claim interruption")
+                    real_replace(source, destination)
+
+                with (
+                    patch("sump._claims.os.replace", side_effect=interrupt_replace),
+                    self.assertRaisesRegex(OSError, "simulated claim interruption"),
+                ):
+                    claim_project("example-app")
+
+                self.assertEqual(list(claimed_directory.iterdir()), [])
+                recovered_claim = claim_project("example-app")
+                self.assertEqual(
+                    [
+                        occurrence["event"]["message"]
+                        for occurrence in recovered_claim["occurrences"]
+                    ],
+                    ["event-0", "event-1", "event-2"],
+                )
+                self.assertEqual(list(staging_directory.iterdir()), [])
+
+    def test_interrupted_claims_recover_every_occurrence(self) -> None:
+        for fail_after_moves in range(4):
+            with self.subTest(fail_after_moves=fail_after_moves):
+                self.assert_interrupted_claim_recovers(fail_after_moves)
 
     def test_empty_project_returns_versioned_empty_claim(self) -> None:
         self.assertEqual(
