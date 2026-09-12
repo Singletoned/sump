@@ -23,6 +23,7 @@ class ProjectPaths:
     projects: Path
     project: Path
     pending: Path
+    claimed: Path
 
 
 def resolve_state_root() -> Path:
@@ -49,6 +50,7 @@ def project_paths(root: Path, project: str) -> ProjectPaths:
         projects=projects_directory,
         project=project_directory,
         pending=project_directory / "pending",
+        claimed=project_directory / "claimed",
     )
 
 
