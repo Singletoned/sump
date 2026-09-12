@@ -147,6 +147,55 @@ def _read_active_claim(registry: ProjectRegistry, project: str) -> dict[str, Any
     return _claim_response(project, metadata, occurrences)
 
 
+def _validate_claim_id(claim_id: str) -> None:
+    try:
+        parsed_claim_id = uuid.UUID(hex=claim_id)
+    except (ValueError, AttributeError) as error:
+        raise ValueError("claim ID must be a 32-character lowercase UUID") from error
+    if parsed_claim_id.hex != claim_id:
+        raise ValueError("claim ID must be a 32-character lowercase UUID")
+
+
+def _acknowledgement_response(project: str, claim_id: str) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "project": project,
+        "claim_id": claim_id,
+        "acknowledged": True,
+    }
+
+
+def acknowledge_claim(project: str, claim_id: str) -> dict[str, Any]:
+    """Retain an active claim under acknowledged storage."""
+    validate_project(project)
+    _validate_claim_id(claim_id)
+    registry = ProjectRegistry.from_environment(project)
+    active_path = registry.paths.claimed / claim_id
+    acknowledged_path = registry.paths.acknowledged / claim_id
+
+    if active_path.exists() and acknowledged_path.exists():
+        raise ValueError(f"claim {claim_id!r} is both active and acknowledged")
+    if acknowledged_path.exists():
+        if not acknowledged_path.is_dir():
+            raise ValueError(f"acknowledged claim is not a directory: {acknowledged_path}")
+        metadata = json.loads(
+            (acknowledged_path / CLAIM_METADATA_FILENAME).read_text(encoding="utf-8")
+        )
+        if metadata.get("project") != project or metadata.get("claim_id") != claim_id:
+            raise ValueError(f"acknowledged claim metadata does not match: {acknowledged_path}")
+        return _acknowledgement_response(project, claim_id)
+
+    active_claim = _read_active_claim(registry, project)
+    if active_claim is None or active_claim["claim_id"] != claim_id:
+        raise FileNotFoundError(f"claim {claim_id!r} not found for project {project!r}")
+
+    _ensure_private_directory(registry.paths.acknowledged)
+    os.replace(active_path, acknowledged_path)
+    _fsync_directory(registry.paths.claimed)
+    _fsync_directory(registry.paths.acknowledged)
+    return _acknowledgement_response(project, claim_id)
+
+
 def claim_project(project: str) -> dict[str, Any]:
     """Return an active claim or claim up to the oldest 100 pending occurrences."""
     validate_project(project)

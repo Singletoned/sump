@@ -5,7 +5,7 @@ import json
 import sys
 from collections.abc import Sequence
 
-from sump._claims import claim_project
+from sump._claims import acknowledge_claim, claim_project
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -20,6 +20,12 @@ def create_parser() -> argparse.ArgumentParser:
         help="Claim pending errors for a project",
     )
     claim_parser.add_argument("project", help="Project slug whose errors should be claimed")
+    acknowledge_parser = commands.add_parser(
+        "acknowledge",
+        help="Acknowledge and retain an active claim",
+    )
+    acknowledge_parser.add_argument("project", help="Project slug that owns the claim")
+    acknowledge_parser.add_argument("claim_id", help="Claim ID returned by sump claim")
     return parser
 
 
@@ -28,6 +34,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = create_parser().parse_args(argv)
     if arguments.command == "claim":
         result = claim_project(arguments.project)
+    elif arguments.command == "acknowledge":
+        result = acknowledge_claim(arguments.project, arguments.claim_id)
     else:
         raise AssertionError(f"unhandled command: {arguments.command}")
 
