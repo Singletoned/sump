@@ -1,7 +1,10 @@
 """Durable filesystem storage for captured Sentry envelopes."""
 
+import fcntl
 import os
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +29,7 @@ class ProjectPaths:
     temporary: Path
     projects: Path
     project: Path
+    lock: Path
     pending: Path
     staging: Path
     claimed: Path
@@ -56,6 +60,7 @@ def project_paths(root: Path, project: str) -> ProjectPaths:
         temporary=root / "tmp",
         projects=projects_directory,
         project=project_directory,
+        lock=project_directory / "project.lock",
         pending=project_directory / "pending",
         staging=project_directory / "staging",
         claimed=project_directory / "claimed",
@@ -92,6 +97,25 @@ class ProjectRegistry:
     def from_environment(cls, project: str) -> "ProjectRegistry":
         """Create a project registry from the central state configuration."""
         return cls(project_paths(resolve_state_root(), project))
+
+    @contextmanager
+    def claim_lock(self) -> Iterator[None]:
+        """Hold the advisory lock that serializes project collection operations."""
+        for directory in (self.paths.root, self.paths.projects, self.paths.project):
+            _ensure_private_directory(directory)
+
+        descriptor = os.open(
+            self.paths.lock,
+            os.O_RDWR | os.O_CREAT,
+            FILE_MODE,
+        )
+        try:
+            os.fchmod(descriptor, FILE_MODE)
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
     def store(self, envelope: Envelope) -> Path | None:
         """Store an event envelope durably, or ignore a non-event envelope."""
