@@ -30,6 +30,7 @@ class ProjectPaths:
     staging: Path
     claimed: Path
     acknowledged: Path
+    expired: Path
 
 
 def resolve_state_root() -> Path:
@@ -59,6 +60,7 @@ def project_paths(root: Path, project: str) -> ProjectPaths:
         staging=project_directory / "staging",
         claimed=project_directory / "claimed",
         acknowledged=project_directory / "acknowledged",
+        expired=project_directory / "expired",
     )
 
 
