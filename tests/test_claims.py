@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -126,6 +127,56 @@ class ClaimTests(unittest.TestCase):
         other_pending = self.state_root / "projects" / "other-app" / "pending"
         self.assertEqual(len(list(example_pending.iterdir())), 1)
         self.assertEqual(len(list(other_pending.iterdir())), 1)
+
+    def test_active_claim_is_redelivered_unchanged_and_new_event_stays_pending(self) -> None:
+        first_capture = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.store_occurrence(
+            "example-app",
+            "first event",
+            first_capture,
+            occurrence_number=1,
+        )
+        self.store_occurrence(
+            "example-app",
+            "second event",
+            first_capture + timedelta(seconds=1),
+            occurrence_number=2,
+        )
+        original_claim = claim_project("example-app")
+        self.store_occurrence(
+            "example-app",
+            "captured after claim",
+            first_capture + timedelta(seconds=2),
+            occurrence_number=3,
+        )
+
+        redelivered_claim = claim_project("example-app")
+
+        self.assertEqual(redelivered_claim, original_claim)
+        self.assertEqual(
+            [occurrence["event"]["message"] for occurrence in redelivered_claim["occurrences"]],
+            ["first event", "second event"],
+        )
+        pending_directory = self.state_root / "projects" / "example-app" / "pending"
+        pending_paths = list(pending_directory.iterdir())
+        self.assertEqual(len(pending_paths), 1)
+        pending_event = Envelope.deserialize(pending_paths[0].read_bytes()).get_event()
+        self.assertEqual(pending_event["message"], "captured after claim")
+
+    def test_multiple_active_claims_fail_plainly(self) -> None:
+        self.store_occurrence(
+            "example-app",
+            "claimed event",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            occurrence_number=1,
+        )
+        claim = claim_project("example-app")
+        claimed_directory = self.state_root / "projects" / "example-app" / "claimed"
+        source = claimed_directory / claim["claim_id"]
+        shutil.copytree(source, claimed_directory / "second-active-claim")
+
+        with self.assertRaisesRegex(ValueError, "multiple active claims"):
+            claim_project("example-app")
 
     def test_empty_project_returns_versioned_empty_claim(self) -> None:
         self.assertEqual(

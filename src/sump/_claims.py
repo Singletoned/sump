@@ -32,7 +32,7 @@ def _format_timestamp(value: datetime) -> str:
 
 def _parse_occurrence_filename(path: Path) -> tuple[str, str]:
     if not path.name.endswith(OCCURRENCE_SUFFIX):
-        raise ValueError(f"invalid pending occurrence filename: {path.name}")
+        raise ValueError(f"invalid occurrence filename: {path.name}")
 
     stem = path.name.removesuffix(OCCURRENCE_SUFFIX)
     try:
@@ -42,7 +42,7 @@ def _parse_occurrence_filename(path: Path) -> tuple[str, str]:
         )
         parsed_id = uuid.UUID(hex=occurrence_id)
     except ValueError as error:
-        raise ValueError(f"invalid pending occurrence filename: {path.name}") from error
+        raise ValueError(f"invalid occurrence filename: {path.name}") from error
 
     return _format_timestamp(captured_at), parsed_id.hex
 
@@ -93,10 +93,68 @@ def _write_claim_metadata(path: Path, metadata: dict[str, Any]) -> None:
         os.fsync(metadata_file.fileno())
 
 
+def _claim_response(
+    project: str,
+    metadata: dict[str, Any],
+    occurrences: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "project": project,
+        "claim_id": metadata["claim_id"],
+        "claimed_at": metadata["claimed_at"],
+        "expires_at": metadata["expires_at"],
+        "occurrences": occurrences,
+    }
+
+
+def _read_active_claim(registry: ProjectRegistry, project: str) -> dict[str, Any] | None:
+    claimed_directory = registry.paths.claimed
+    if not claimed_directory.exists():
+        return None
+
+    claim_directories = sorted(claimed_directory.iterdir())
+    if any(not path.is_dir() for path in claim_directories):
+        raise ValueError(f"unexpected entry in active claims directory: {claimed_directory}")
+    if len(claim_directories) > 1:
+        raise ValueError(f"project {project!r} has multiple active claims")
+    if not claim_directories:
+        return None
+
+    claim_directory = claim_directories[0]
+    metadata_path = claim_directory / CLAIM_METADATA_FILENAME
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError(f"unsupported claim metadata schema: {metadata_path}")
+    if metadata.get("project") != project:
+        raise ValueError(f"active claim project does not match {project!r}: {metadata_path}")
+    if metadata.get("claim_id") != claim_directory.name:
+        raise ValueError(f"active claim ID does not match its directory: {metadata_path}")
+
+    occurrence_filenames = metadata.get("occurrence_filenames")
+    if not isinstance(occurrence_filenames, list) or not all(
+        isinstance(filename, str) for filename in occurrence_filenames
+    ):
+        raise ValueError(f"invalid occurrence filename list: {metadata_path}")
+
+    stored_filenames = sorted(
+        path.name for path in claim_directory.iterdir() if path.name != CLAIM_METADATA_FILENAME
+    )
+    if sorted(occurrence_filenames) != stored_filenames:
+        raise ValueError(f"active claim contents do not match metadata: {claim_directory}")
+
+    occurrences = [_read_occurrence(claim_directory / name) for name in occurrence_filenames]
+    return _claim_response(project, metadata, occurrences)
+
+
 def claim_project(project: str) -> dict[str, Any]:
-    """Claim up to the oldest 100 pending occurrences for a project."""
+    """Return an active claim or claim up to the oldest 100 pending occurrences."""
     validate_project(project)
     registry = ProjectRegistry.from_environment(project)
+    active_claim = _read_active_claim(registry, project)
+    if active_claim is not None:
+        return active_claim
+
     pending_directory = registry.paths.pending
     if not pending_directory.exists():
         return _empty_claim(project)
@@ -130,11 +188,4 @@ def claim_project(project: str) -> dict[str, Any]:
     _fsync_directory(claim_directory)
     _fsync_directory(registry.paths.claimed)
 
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "project": project,
-        "claim_id": claim_id,
-        "claimed_at": metadata["claimed_at"],
-        "expires_at": metadata["expires_at"],
-        "occurrences": occurrences,
-    }
+    return _claim_response(project, metadata, occurrences)
