@@ -111,16 +111,14 @@ def main():
         environment.pop("PYTHONPATH", None)
         environment["SUMP_STATE_DIR"] = str(state_root)
 
-        instructions = run_for_output(
-            [sump_command, "instructions", "wheel-smoke"], root, environment
-        )
-        require('project="wheel-smoke"' in instructions, "installed instructions lack setup")
+        instructions = run_for_output([sump_command, "instructions"], root, environment)
+        require('project="PROJECT_SLUG"' in instructions, "installed instructions lack setup")
         require(
-            "sump claim wheel-smoke" in instructions,
+            "sump claim PROJECT_SLUG" in instructions,
             "installed instructions lack the claim command",
         )
         require(
-            "sump acknowledge wheel-smoke CLAIM_ID" in instructions,
+            "sump acknowledge PROJECT_SLUG CLAIM_ID" in instructions,
             "installed instructions lack the acknowledgement command",
         )
         require(

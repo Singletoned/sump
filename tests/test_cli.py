@@ -1,10 +1,9 @@
 """Tests for the Sump command-line entry point."""
 
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 
-import sump
 from sump.cli import create_parser, main
 
 
@@ -22,17 +21,19 @@ class CommandLineTests(unittest.TestCase):
         self.assertIn("claim", output.getvalue())
         self.assertIn("instructions", output.getvalue())
 
-    def test_instructions_are_project_specific_and_cover_the_agent_workflow(self) -> None:
+    def test_instructions_need_no_project_and_cover_the_agent_workflow(self) -> None:
         output = StringIO()
 
         with redirect_stdout(output):
-            exit_code = main(["instructions", "example-app"])
+            exit_code = main(["instructions"])
 
         instructions = output.getvalue()
         self.assertEqual(exit_code, 0)
-        self.assertIn('project="example-app"', instructions)
-        self.assertIn("sump claim example-app", instructions)
-        self.assertIn("sump acknowledge example-app CLAIM_ID", instructions)
+        self.assertIn('project="PROJECT_SLUG"', instructions)
+        self.assertIn("sump claim PROJECT_SLUG", instructions)
+        self.assertIn("sump acknowledge PROJECT_SLUG CLAIM_ID", instructions)
+        self.assertIn("project metadata", instructions.lower())
+        self.assertIn("ambiguous", instructions.lower())
         self.assertIn('"claim_id": null', instructions)
         self.assertIn("100", instructions)
         self.assertIn("30-minute", instructions)
@@ -41,14 +42,14 @@ class CommandLineTests(unittest.TestCase):
         self.assertRegex(instructions.lower(), r"needed\s+features")
         self.assertIn("silently work around", instructions.lower())
 
-    def test_instructions_use_application_project_validation(self) -> None:
-        with self.assertRaises(ValueError) as init_context:
-            sump.init(project="Invalid Project")
+    def test_instructions_reject_an_unexpected_project_argument(self) -> None:
+        errors = StringIO()
 
-        with self.assertRaises(ValueError) as instructions_context:
-            main(["instructions", "Invalid Project"])
+        with redirect_stderr(errors), self.assertRaises(SystemExit) as exit_context:
+            main(["instructions", "example-app"])
 
-        self.assertEqual(str(instructions_context.exception), str(init_context.exception))
+        self.assertEqual(exit_context.exception.code, 2)
+        self.assertIn("unrecognized arguments: example-app", errors.getvalue())
 
 
 if __name__ == "__main__":

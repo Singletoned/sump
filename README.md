@@ -51,13 +51,13 @@ Sump stores message and error event envelopes, including attachments. Transactio
 
 ## Give instructions to a coding agent
 
-Generate a self-contained, project-specific integration and collection prompt:
+Generate a self-contained integration and collection prompt without needing to know a project slug first:
 
 ```console
-sump instructions example-app
+sump instructions
 ```
 
-The Markdown output tells an agent how to install and initialize Sump, preserve existing Sentry integrations, claim and acknowledge errors safely, handle retries and duplicates, and report shortcomings or needed features to the user so they can be improved in Sump.
+The Markdown output tells an agent how to derive a stable project slug, install and initialize Sump, preserve existing Sentry integrations, claim and acknowledge errors safely, handle retries and duplicates, and report shortcomings or needed features to the user so they can be improved in Sump.
 
 ## Coding-agent collection workflow
 

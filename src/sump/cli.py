@@ -27,11 +27,10 @@ def create_parser() -> argparse.ArgumentParser:
     )
     acknowledge_parser.add_argument("project", help="Project slug that owns the claim")
     acknowledge_parser.add_argument("claim_id", help="Claim ID returned by sump claim")
-    instructions_parser = commands.add_parser(
+    commands.add_parser(
         "instructions",
-        help="Print project-specific instructions for a coding agent",
+        help="Print integration and collection instructions for a coding agent",
     )
-    instructions_parser.add_argument("project", help="Stable project slug to integrate")
     return parser
 
 
@@ -39,7 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the Sump command-line interface."""
     arguments = create_parser().parse_args(argv)
     if arguments.command == "instructions":
-        sys.stdout.write(integration_instructions(arguments.project))
+        sys.stdout.write(integration_instructions())
         return 0
 
     if arguments.command == "claim":
