@@ -49,6 +49,16 @@ Project slugs contain 1–63 lowercase ASCII letters, numbers, dots, underscores
 
 Sump stores message and error event envelopes, including attachments. Transactions, sessions, metrics, profiles, and check-ins are not collected.
 
+## Give instructions to a coding agent
+
+Generate a self-contained, project-specific integration and collection prompt:
+
+```console
+sump instructions example-app
+```
+
+The Markdown output tells an agent how to install and initialize Sump, preserve existing Sentry integrations, claim and acknowledge errors safely, handle retries and duplicates, and report shortcomings or needed features to the user so they can be improved in Sump.
+
 ## Coding-agent collection workflow
 
 ### 1. Claim errors
@@ -159,7 +169,7 @@ Each occurrence contains:
 
 Acknowledgement documents contain `schema_version`, `project`, `claim_id`, and the boolean `acknowledged` field.
 
-Successful commands reserve stdout for JSON. Invalid input, malformed registry data, permission failures, stale claims, and storage failures exit non-zero with a traceback on stderr.
+Successful claim and acknowledgement commands reserve stdout for JSON; `sump instructions` writes Markdown. Invalid input, malformed registry data, permission failures, stale claims, and storage failures exit non-zero with a traceback on stderr.
 
 ## Registry storage and security
 

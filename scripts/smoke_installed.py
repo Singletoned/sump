@@ -111,6 +111,23 @@ def main():
         environment.pop("PYTHONPATH", None)
         environment["SUMP_STATE_DIR"] = str(state_root)
 
+        instructions = run_for_output(
+            [sump_command, "instructions", "wheel-smoke"], root, environment
+        )
+        require('project="wheel-smoke"' in instructions, "installed instructions lack setup")
+        require(
+            "sump claim wheel-smoke" in instructions,
+            "installed instructions lack the claim command",
+        )
+        require(
+            "sump acknowledge wheel-smoke CLAIM_ID" in instructions,
+            "installed instructions lack the acknowledgement command",
+        )
+        require(
+            "room for improvement" in instructions and "silently work around" in instructions,
+            "installed instructions lack the improvement-reporting directive",
+        )
+
         capture_result = json.loads(
             run_for_output([python, "-c", CAPTURE_SCRIPT], root, environment)
         )
