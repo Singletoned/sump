@@ -1,6 +1,7 @@
 """Application-facing Sentry SDK initialization."""
 
 import re
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from typing import Any
 
@@ -36,3 +37,20 @@ def init(project: str, **sentry_options: Any) -> AbstractContextManager[Any]:
         transport=LocalTransport(project),
         **sentry_options,
     )
+
+
+def capture_message(project: str, message: str, context: Mapping[str, Any]) -> str:
+    """Capture a local error-level message for non-Python SDK callers."""
+    if not isinstance(message, str):
+        raise TypeError("message must be a string")
+    if not message:
+        raise ValueError("message must not be empty")
+
+    init(project, default_integrations=False, environment="development")
+    with sentry_sdk.isolation_scope() as scope:
+        scope.set_context("sump", dict(context))
+        event_id = sentry_sdk.capture_message(message, level="error")
+
+    if event_id is None:
+        raise RuntimeError("Sentry did not return an event ID")
+    return event_id

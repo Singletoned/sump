@@ -49,6 +49,21 @@ Project slugs contain 1–63 lowercase ASCII letters, numbers, dots, underscores
 
 Sump stores message and error event envelopes, including attachments. Transactions, sessions, metrics, profiles, and check-ins are not collected.
 
+## Non-Python capture bridge
+
+A development tool that cannot import the Python SDK can send an error-level message through the
+installed CLI. Pass a JSON object with the relevant structured diagnostic context:
+
+```console
+sump capture example-app \
+  --message "SQLite I/O error" \
+  --context-json '{"tool":"ctx_batch_execute"}'
+```
+
+The command writes `{"event_id":"..."}` to stdout after synchronous local capture. A non-zero
+exit means the error was not recorded and must be surfaced to the calling tool. This bridge records
+a message rather than replacing native SDK initialization or framework exception integrations.
+
 ## Give instructions to a coding agent
 
 Generate a self-contained integration and collection prompt without needing to know a project slug first:

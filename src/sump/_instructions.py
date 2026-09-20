@@ -35,10 +35,12 @@ def integration_instructions() -> str:
 
            Keep existing options and integrations except `dsn` and `transport`, which Sump owns.
            Keep using `capture_exception()`, `capture_message()`, and framework integrations.
-        4. Initialize Sump once, early in startup. Run the project's checks and verify a local
-           captured error when practical. Do not add this setup to production. Leave
-           `SUMP_STATE_DIR` unset unless already configured; the application and CLI must use the
-           same value.
+        4. Initialize Sump once, early in startup. For a non-Python process that cannot use the
+           SDK, invoke `sump capture PROJECT_SLUG --message "..."` with `--context-json` set to a
+           JSON object. Treat a non-zero exit as a capture failure.
+        5. Run the project's checks and verify a local captured error when practical. Do not add
+           this setup to production. Leave `SUMP_STATE_DIR` unset unless already configured; the
+           application and CLI must use the same value.
 
         ## Process errors
 

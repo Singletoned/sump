@@ -1,9 +1,14 @@
 """Tests for the Sump command-line entry point."""
 
+import json
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
 
+from sump._claims import claim_project
 from sump.cli import create_parser, main
 
 
@@ -19,6 +24,7 @@ class CommandLineTests(unittest.TestCase):
 
         self.assertEqual(exit_context.exception.code, 0)
         self.assertIn("claim", output.getvalue())
+        self.assertIn("capture", output.getvalue())
         self.assertIn("instructions", output.getvalue())
 
     def test_instructions_need_no_project_and_cover_the_agent_workflow(self) -> None:
@@ -43,6 +49,36 @@ class CommandLineTests(unittest.TestCase):
         self.assertIn("report", instructions.lower())
         self.assertRegex(instructions.lower(), r"needed\s+features")
         self.assertIn("silently work around", instructions.lower())
+
+    def test_capture_records_a_message_with_structured_context(self) -> None:
+        output = StringIO()
+
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            patch.dict("os.environ", {"SUMP_STATE_DIR": str(Path(temporary_directory))}),
+            redirect_stdout(output),
+        ):
+            exit_code = main(
+                [
+                    "capture",
+                    "example-app",
+                    "--message",
+                    "SQLite I/O error",
+                    "--context-json",
+                    '{"tool":"ctx_batch_execute"}',
+                ]
+            )
+            claimed = claim_project("example-app")
+
+        result = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertRegex(result["event_id"], r"^[0-9a-f]{32}$")
+        self.assertEqual(claimed["occurrences"][0]["event"]["message"], "SQLite I/O error")
+        self.assertEqual(claimed["occurrences"][0]["event"]["environment"], "development")
+        self.assertEqual(
+            claimed["occurrences"][0]["event"]["contexts"]["sump"]["tool"],
+            "ctx_batch_execute",
+        )
 
     def test_instructions_reject_an_unexpected_project_argument(self) -> None:
         errors = StringIO()
