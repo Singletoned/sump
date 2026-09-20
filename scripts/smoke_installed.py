@@ -126,6 +126,37 @@ def main():
             "installed instructions lack the improvement-reporting directive",
         )
 
+        cli_capture = json.loads(
+            run_for_output(
+                [
+                    sump_command,
+                    "capture",
+                    "wheel-smoke-cli",
+                    "--message",
+                    "installed wheel CLI bridge",
+                    "--context-json",
+                    '{"source":"smoke"}',
+                ],
+                root,
+                environment,
+            )
+        )
+        require(isinstance(cli_capture["event_id"], str), "CLI bridge returned no event ID")
+        cli_claim = json.loads(
+            run_for_output([sump_command, "claim", "wheel-smoke-cli"], root, environment)
+        )
+        cli_event = cli_claim["occurrences"][0]["event"]
+        require(cli_event["message"] == "installed wheel CLI bridge", "CLI bridge message changed")
+        require(
+            cli_event["contexts"]["sump"] == {"source": "smoke"},
+            "CLI bridge context changed",
+        )
+        run_for_output(
+            [sump_command, "acknowledge", "wheel-smoke-cli", cli_claim["claim_id"]],
+            root,
+            environment,
+        )
+
         capture_result = json.loads(
             run_for_output([python, "-c", CAPTURE_SCRIPT], root, environment)
         )
