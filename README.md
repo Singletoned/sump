@@ -69,7 +69,7 @@ a message rather than replacing native SDK initialization or framework exception
 Generate a self-contained integration and collection prompt without needing to know a project slug first:
 
 ```console
-sump instructions
+sump --instructions
 ```
 
 The Markdown output tells an agent how to derive a stable project slug, install and initialize Sump, preserve existing Sentry integrations, claim and acknowledge errors safely, handle retries and duplicates, and report shortcomings or needed features to the user so they can be improved in Sump.
@@ -184,7 +184,7 @@ Each occurrence contains:
 
 Acknowledgement documents contain `schema_version`, `project`, `claim_id`, and the boolean `acknowledged` field.
 
-Successful claim and acknowledgement commands reserve stdout for JSON; `sump instructions` writes Markdown. Invalid input, malformed registry data, permission failures, stale claims, and storage failures exit non-zero with a traceback on stderr.
+Successful claim and acknowledgement commands reserve stdout for JSON; `sump --instructions` writes Markdown. Invalid input, malformed registry data, permission failures, stale claims, and storage failures exit non-zero with a traceback on stderr.
 
 ## Registry storage and security
 

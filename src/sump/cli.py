@@ -4,10 +4,25 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from typing import NoReturn
 
 from sump._claims import acknowledge_claim, claim_project
 from sump._instructions import integration_instructions
 from sump._sdk import capture_message
+
+
+class _InstructionsAction(argparse.Action):
+    """Print the Markdown guide without argparse reformatting it."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> NoReturn:
+        sys.stdout.write(integration_instructions())
+        parser.exit()
 
 
 def parse_context_json(value: str) -> dict[str, object]:
@@ -27,6 +42,12 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sump",
         description="Record and collect local Sentry SDK errors.",
+    )
+    parser.add_argument(
+        "--instructions",
+        action=_InstructionsAction,
+        nargs=0,
+        help="Print integration and collection instructions for a coding agent",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     claim_parser = commands.add_parser(
@@ -52,20 +73,12 @@ def create_parser() -> argparse.ArgumentParser:
         type=parse_context_json,
         help="Structured JSON object stored as Sentry context",
     )
-    commands.add_parser(
-        "instructions",
-        help="Print integration and collection instructions for a coding agent",
-    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Sump command-line interface."""
     arguments = create_parser().parse_args(argv)
-    if arguments.command == "instructions":
-        sys.stdout.write(integration_instructions())
-        return 0
-
     if arguments.command == "claim":
         result = claim_project(arguments.project)
     elif arguments.command == "acknowledge":

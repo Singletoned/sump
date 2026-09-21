@@ -111,7 +111,7 @@ def main():
         environment.pop("PYTHONPATH", None)
         environment["SUMP_STATE_DIR"] = str(state_root)
 
-        instructions = run_for_output([sump_command, "instructions"], root, environment)
+        instructions = run_for_output([sump_command, "--instructions"], root, environment)
         require('project="PROJECT_SLUG"' in instructions, "installed instructions lack setup")
         require(
             "sump claim PROJECT_SLUG" in instructions,

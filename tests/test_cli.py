@@ -25,16 +25,16 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(exit_context.exception.code, 0)
         self.assertIn("claim", output.getvalue())
         self.assertIn("capture", output.getvalue())
-        self.assertIn("instructions", output.getvalue())
+        self.assertIn("--instructions", output.getvalue())
 
     def test_instructions_need_no_project_and_cover_the_agent_workflow(self) -> None:
         output = StringIO()
 
-        with redirect_stdout(output):
-            exit_code = main(["instructions"])
+        with redirect_stdout(output), self.assertRaises(SystemExit) as exit_context:
+            main(["--instructions"])
 
         instructions = output.getvalue()
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_context.exception.code, 0)
         self.assertLessEqual(len(instructions.splitlines()), 65)
         self.assertNotIn("derive one stable project slug", instructions.lower())
         self.assertIn('project="PROJECT_SLUG"', instructions)
@@ -80,14 +80,14 @@ class CommandLineTests(unittest.TestCase):
             "ctx_batch_execute",
         )
 
-    def test_instructions_reject_an_unexpected_project_argument(self) -> None:
+    def test_instructions_subcommand_is_rejected(self) -> None:
         errors = StringIO()
 
         with redirect_stderr(errors), self.assertRaises(SystemExit) as exit_context:
-            main(["instructions", "example-app"])
+            main(["instructions"])
 
         self.assertEqual(exit_context.exception.code, 2)
-        self.assertIn("unrecognized arguments: example-app", errors.getvalue())
+        self.assertIn("invalid choice: 'instructions'", errors.getvalue())
 
 
 if __name__ == "__main__":
