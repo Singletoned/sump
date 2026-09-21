@@ -19,8 +19,7 @@ def integration_instructions() -> str:
            user. Lowercase it, replace unsupported characters with hyphens, and keep it to 1-63
            letters, numbers, dots, underscores, or hyphens, starting and ending with a letter or
            number. Replace `PROJECT_SLUG` in every example below.
-        2. Install this local checkout in the application. With uv, run
-           `uv add /absolute/path/to/sump`. Ask the user for the path if needed.
+        2. Install Sump in the application with `uv add sump`.
         3. Replace the application's `sentry_sdk.init(...)` call with:
 
            ```python

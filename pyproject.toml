@@ -4,7 +4,25 @@ version = "0.1.0"
 description = "Record Sentry SDK errors in a machine-local registry"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ed Singleton", email = "ed@singletoned.com" }]
+keywords = ["coding-agents", "error-reporting", "local-development", "sentry"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Debuggers",
+]
 dependencies = ["platformdirs>=4.11.8", "sentry-sdk>=2,<3"]
+
+[project.urls]
+Homepage = "https://github.com/singletoned/sump"
+Repository = "https://github.com/singletoned/sump"
+Issues = "https://github.com/singletoned/sump/issues"
 
 [project.scripts]
 sump = "sump.cli:main"

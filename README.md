@@ -6,13 +6,15 @@ Sump records Python Sentry SDK errors in a private machine-local registry for co
 
 Sump supports macOS and Linux, Python 3.10 or newer, and `sentry-sdk>=2.0.0,<3`. Its transport contract is tested against Sentry SDK 2.0.0 and the current version locked by this project.
 
-Sump is currently a local alpha rather than a PyPI release. Add a local checkout to an application's uv environment:
+Install Sump from PyPI with uv or pip:
 
 ```console
-uv add /absolute/path/to/sump
+uv add sump
+# or
+python -m pip install sump
 ```
 
-For Sump development itself:
+For Sump development itself, clone the repository and run:
 
 ```console
 make setup
@@ -204,3 +206,7 @@ Empty and relative overrides are rejected. Applications normally should not need
 Sentry events can contain source code, request values, user details, and attachment contents. Sump creates managed directories with mode `0700` and records and lock files with mode `0600`, denying group and world access. Keep the registry local and do not place it in a shared or synchronized directory.
 
 Acknowledged envelopes and metadata are retained indefinitely for audit and debugging. Expired-claim metadata is also retained so stale acknowledgements remain identifiable. The alpha has no automatic cleanup, quota, or Sump-specific attachment-size limit, so registry growth and available disk space remain the user's responsibility.
+
+## License
+
+Sump is released under the [MIT License](LICENSE).
