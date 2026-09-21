@@ -207,6 +207,22 @@ Sentry events can contain source code, request values, user details, and attachm
 
 Acknowledged envelopes and metadata are retained indefinitely for audit and debugging. Expired-claim metadata is also retained so stale acknowledgements remain identifiable. The alpha has no automatic cleanup, quota, or Sump-specific attachment-size limit, so registry growth and available disk space remain the user's responsibility.
 
+## Releasing
+
+Releases are published from version tags by [the GitHub Actions release workflow](.github/workflows/release.yml). The repository must have a `pypi` environment and a matching PyPI Trusted Publisher for the `release.yml` workflow. No PyPI token is stored in GitHub.
+
+Set and verify the version, commit it, then push the matching tag:
+
+```console
+uv version 0.1.1
+make compatibility
+make smoke
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin main v0.1.1
+```
+
+The workflow rejects a tag that does not match `pyproject.toml`, verifies the wheel and source distribution in an unprivileged job, and gives OIDC publishing permission only to the final publish job.
+
 ## License
 
 Sump is released under the [MIT License](LICENSE).
