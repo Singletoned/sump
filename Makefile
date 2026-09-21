@@ -1,4 +1,4 @@
-.PHONY: setup format test compatibility check build smoke
+.PHONY: setup format test compatibility check build smoke release
 
 setup: ## Install project and development dependencies
 	uv sync --all-groups
@@ -24,3 +24,7 @@ build: ## Build wheel and source distributions
 
 smoke: check build ## Verify the installed wheel's no-network workflow
 	uv run python scripts/smoke_installed.py $$(ls dist/sump-*.whl)
+
+# args: version
+release: ## Create, verify, and push a versioned release
+	./scripts/release.sh "$(VERSION)"
