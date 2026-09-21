@@ -55,8 +55,19 @@ class ReleaseCommandTests(unittest.TestCase):
                 completed = self._release(version)
                 self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    def test_release_rejects_invalid_or_unchanged_versions_before_mutation(self) -> None:
-        for version in ("next", "0.2", "0.2.0.post1", "0.1.0"):
+    def test_release_can_publish_the_current_untagged_version(self) -> None:
+        completed = self._release("0.1.0")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(self._git_output("log", "-1", "--format=%s"), "Release v0.1.0")
+        self.assertEqual(self._git_output("tag", "--list", "v0.1.0"), "v0.1.0")
+        release_commit = self._git_output("rev-parse", "HEAD")
+        self.assertNotEqual(release_commit, self.initial_commit)
+        self.assertEqual(self._remote_output("rev-parse", "refs/heads/main"), release_commit)
+        self.assertEqual(self._remote_output("rev-parse", "refs/tags/v0.1.0^{}"), release_commit)
+
+    def test_release_rejects_invalid_versions_before_mutation(self) -> None:
+        for version in ("next", "0.2", "0.2.0.post1"):
             with self.subTest(version=version):
                 completed = self._release(version)
                 self.assertNotEqual(completed.returncode, 0)

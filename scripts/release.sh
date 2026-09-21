@@ -29,7 +29,6 @@ remote_head=$(git rev-parse refs/remotes/origin/main)
 [ "$start_head" = "$remote_head" ] || fail "main must match origin/main before release"
 
 current_version=$(uv version --short)
-[ "$version" != "$current_version" ] || fail "version $version is already current"
 
 set +e
 git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1
@@ -53,23 +52,26 @@ rollback() {
 }
 trap rollback EXIT
 
-uv version "$version"
-[ "$(uv version --short)" = "$version" ] || fail "uv normalized VERSION; use the normalized version"
+if [ "$version" != "$current_version" ]; then
+    uv version "$version"
+    [ "$(uv version --short)" = "$version" ] ||
+        fail "uv normalized VERSION; use the normalized version"
 
-for changed_path in $(git status --porcelain | cut -c4-); do
-    case "$changed_path" in
-        pyproject.toml|uv.lock) ;;
-        *) fail "version update unexpectedly changed ${changed_path}" ;;
-    esac
-done
+    for changed_path in $(git status --porcelain | cut -c4-); do
+        case "$changed_path" in
+            pyproject.toml|uv.lock) ;;
+            *) fail "version update unexpectedly changed ${changed_path}" ;;
+        esac
+    done
 
-git diff --quiet -- pyproject.toml && fail "version update did not change pyproject.toml"
+    git diff --quiet -- pyproject.toml && fail "version update did not change pyproject.toml"
+fi
 
 make compatibility
 make smoke
 
 git add pyproject.toml uv.lock
-git commit -m "Release ${tag}"
+git commit --allow-empty -m "Release ${tag}"
 git tag --annotate "$tag" --message "Release ${tag}"
 git push --atomic origin main "$tag"
 
